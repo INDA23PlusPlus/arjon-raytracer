@@ -9,13 +9,18 @@ func degreesToRadians[T Float](degrees T) T {
 	return degrees * (math.Pi / 180.0)
 }
 
-// Random float in the interval [0.0, 1.0)
-func random[T Float]() T {
-	return T(rand.Float64())
-}
-
-func randomRange[T Float](min, max T) T {
-	return min + (max-min)*random[T]()
+// If two arguments are provided, returns a random float in the interval [min, max)
+// where min is the first argument and max is the second argument.
+// If no arguments are provided, returns a random float in the interval [0, 1).
+func random[T Float](interval ...T) T {
+	if len(interval) == 2 {
+		intervalMin, intervalMax := interval[0], interval[1]
+		return intervalMin + (intervalMax-intervalMin)*T(rand.Float64())
+	}
+	if len(interval) == 0 {
+		return T(rand.Float64())
+	}
+	panic("Expected 0 or 2 arguments")
 }
 
 type RayTracer[T Float] struct {
@@ -97,8 +102,8 @@ func (rt *RayTracer[T]) pixelSampleSquare() Vec3[T] {
 }
 
 func (rt *RayTracer[T]) getRay(i, j uint) Ray[T] {
-	u := T(j) + randomRange[T](-0.5, 0.5)
-	v := T(i) + randomRange[T](-0.5, 0.5)
+	u := T(j) + random[T](-0.5, 0.5)
+	v := T(i) + random[T](-0.5, 0.5)
 
 	pixelCenter := rt.pixel00Loc.Add(rt.pixelDeltaU.Mul(u)).Add(rt.pixelDeltaV.Mul(v))
 	r := Ray[T]{rt.cameraCenter, pixelCenter.Sub(rt.cameraCenter)}
