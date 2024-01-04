@@ -1,0 +1,141 @@
+package main
+
+import (
+	"math"
+	"math/rand"
+)
+
+func degreesToRadians[T Float](degrees T) T {
+	return degrees * (math.Pi / 180.0)
+}
+
+// Random float in the interval [0.0, 1.0)
+func random[T Float]() T {
+	return T(rand.Float64())
+}
+
+func randomRange[T Float](min, max T) T {
+	return min + (max-min)*random[T]()
+}
+
+type RayTracer[T Float] struct {
+	aspectRatio              T       // Width / Height
+	imageWidth, imageHeight  uint    // Width and height of the image in pixels
+	viewPortHeight           T       // Height of the viewport in world units
+	viewPortWidth            T       // Width of the viewport in world units
+	cameraCenter             Vec3[T] // Location of the camera
+	pixel00Loc               Vec3[T] // Location of the pixel at (0, 0)
+	pixelDeltaU, pixelDeltaV Vec3[T] // Pixel delta vectors
+	focalLength              T       // Distance from the camera to the viewport
+	samplesPerPixel          uint    // Number of samples per pixel
+}
+
+func makeRayTracer[T Float](imageWidth, imageHeight uint, optSamplesPerPixel ...uint) RayTracer[T] {
+	if imageWidth <= 0 || imageHeight <= 0 {
+		panic("Image width and height must be positive")
+	}
+	if len(optSamplesPerPixel) > 1 {
+		panic("Too many arguments")
+	}
+
+	cameraCenter := Vec3[T]{0, 0, 0}
+
+	// Determine the viewport size
+	var focalLength T = 1.0
+	aspectRatio := T(imageWidth) / T(imageHeight)
+	viewPortHeight := T(2.0)
+	viewPortWidth := aspectRatio * viewPortHeight
+
+	// Calculate the vectors for the viewport
+	viewportU, viewportV := Vec3[T]{viewPortWidth, 0, 0}, Vec3[T]{0, -viewPortHeight, 0}
+
+	// Calculate the vectors for the pixels
+	pixelDeltaU, pixelDeltaV := viewportU.Div(T(imageWidth)), viewportV.Div(T(imageHeight))
+
+	// Calculate the location of the pixel at (0, 0)
+	viewportUpperLeftCorner := cameraCenter.Sub(viewportU.Div(2)).Sub(viewportV.Div(2)).Sub(Vec3[T]{0, 0, focalLength})
+	pixel00Loc := viewportUpperLeftCorner.Add(pixelDeltaU.Add(pixelDeltaV).Div(2))
+
+	// Set the number of samples per pixel
+	var samplesPerPixel uint
+	if len(optSamplesPerPixel) > 0 {
+		samplesPerPixel = optSamplesPerPixel[0]
+	} else {
+		samplesPerPixel = 10
+	}
+
+	return RayTracer[T]{aspectRatio, imageWidth, imageHeight, viewPortHeight, viewPortWidth,
+		cameraCenter, pixel00Loc, pixelDeltaU, pixelDeltaV, focalLength, samplesPerPixel}
+}
+
+func (rt *RayTracer[T]) hitSphere(center Vec3[T], radius T, r *Ray[T]) T {
+	oc := r.origin.Sub(center)
+	a := r.direction.Dot(r.direction)
+	b := 2.0 * oc.Dot(r.direction)
+	c := oc.Dot(oc) - radius*radius
+	discriminant := b*b - 4*a*c
+	if discriminant < 0.0 {
+		return -1.0
+	}
+	return (-b - T(math.Sqrt(float64(discriminant)))) / (2.0 * a)
+}
+
+func (rt *RayTracer[T]) color(r *Ray[T], hittable Hittable[T]) Vec3[T] {
+	var hitRecord HitRecord[T]
+	if hittable.hit(r, Interval[T]{0.0, T(math.Inf(1))}, &hitRecord) {
+		return Vec3[T]{hitRecord.normal.x + 1, hitRecord.normal.y + 1, hitRecord.normal.z + 1}.Mul(0.5)
+	}
+
+	unitDirection := r.direction.UnitVector()
+	a := 0.5 * (unitDirection.y + 1.0)
+	return Vec3[T]{1.0, 1.0, 1.0}.Mul(1.0 - a).Add(Vec3[T]{0.5, 0.7, 1.0}.Mul(a))
+}
+
+func (rt *RayTracer[T]) pixelSampleSquare() Vec3[T] {
+	deltaPixel := T(-0.5) + random[T]() // Random float in the interval [-0.5, 0.5)
+	return (rt.pixelDeltaU.Mul(deltaPixel)).Add(rt.pixelDeltaV.Mul(deltaPixel))
+}
+
+func (rt *RayTracer[T]) getRay(i, j uint) Ray[T] {
+	u := T(j) + randomRange[T](-0.5, 0.5)
+	v := T(i) + randomRange[T](-0.5, 0.5)
+
+	pixelCenter := rt.pixel00Loc.Add(rt.pixelDeltaU.Mul(u)).Add(rt.pixelDeltaV.Mul(v))
+	r := Ray[T]{rt.cameraCenter, pixelCenter.Sub(rt.cameraCenter)}
+	return r
+}
+
+func (rt *RayTracer[T]) traceImage() [][]Vec3[T] {
+	var image [][]Vec3[T]
+
+	var world HittableList[T]
+
+	world.add(Sphere[T]{Vec3[T]{0, 0, -1}, 0.5})
+	world.add(Sphere[T]{Vec3[T]{0, -100.5, -1}, 100})
+
+	for i := uint(0); i < rt.imageHeight; i++ {
+		image = append(image, make([]Vec3[T], rt.imageWidth))
+		for j := uint(0); j < rt.imageWidth; j++ {
+			color := Vec3[T]{0, 0, 0}
+
+			for s := uint(0); s < rt.samplesPerPixel; s++ {
+				r := rt.getRay(i, j)
+				color = color.Add(rt.color(&r, &world))
+			}
+
+			// Divide the color by the number of samples to get the average color
+			color = color.Div(T(rt.samplesPerPixel))
+
+			image[i][j] = color
+		}
+	}
+
+	return image
+}
+
+func main() {
+	const width, height = 400, 200
+	rt := makeRayTracer[float32](width, height, 100)
+	image := rt.traceImage()
+	PpmWriter("test.ppm", image)
+}
