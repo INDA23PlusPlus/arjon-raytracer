@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 )
 
@@ -71,13 +72,17 @@ func PpmWriter[T Float](filename string, image [][]Vec3[T]) {
 
 	for _, row := range image {
 		for _, pixel := range row {
-			r := int(255.999 * interval.Clamp(pixel.x))
-			g := int(255.999 * interval.Clamp(pixel.y))
-			b := int(255.999 * interval.Clamp(pixel.z))
+			r := int(255.999 * interval.Clamp(linearToGamma(pixel.x)))
+			g := int(255.999 * interval.Clamp(linearToGamma(pixel.y)))
+			b := int(255.999 * interval.Clamp(linearToGamma(pixel.z)))
 			_, err = file.WriteString(fmt.Sprintf("%d %d %d\n", r, g, b))
 			if err != nil {
 				panic(err)
 			}
 		}
 	}
+}
+
+func linearToGamma[T Float](x T) T {
+	return T(math.Sqrt(float64(x)))
 }

@@ -33,6 +33,7 @@ type RayTracer[T Float] struct {
 	pixelDeltaU, pixelDeltaV Vec3[T] // Pixel delta vectors
 	focalLength              T       // Distance from the camera to the viewport
 	samplesPerPixel          uint    // Number of samples per pixel
+	maxDepth                 uint    // Maximum number of bounces
 }
 
 func makeRayTracer[T Float](imageWidth, imageHeight uint, optSamplesPerPixel ...uint) RayTracer[T] {
@@ -69,8 +70,10 @@ func makeRayTracer[T Float](imageWidth, imageHeight uint, optSamplesPerPixel ...
 		samplesPerPixel = 10
 	}
 
+	maxDepth := uint(10)
+
 	return RayTracer[T]{aspectRatio, imageWidth, imageHeight, viewPortHeight, viewPortWidth,
-		cameraCenter, pixel00Loc, pixelDeltaU, pixelDeltaV, focalLength, samplesPerPixel}
+		cameraCenter, pixel00Loc, pixelDeltaU, pixelDeltaV, focalLength, samplesPerPixel, maxDepth}
 }
 
 func (rt *RayTracer[T]) hitSphere(center Vec3[T], radius T, r *Ray[T]) T {
@@ -85,10 +88,20 @@ func (rt *RayTracer[T]) hitSphere(center Vec3[T], radius T, r *Ray[T]) T {
 	return (-b - T(math.Sqrt(float64(discriminant)))) / (2.0 * a)
 }
 
-func (rt *RayTracer[T]) color(r *Ray[T], hittable Hittable[T]) Vec3[T] {
+func (rt *RayTracer[T]) color(r *Ray[T], hittable Hittable[T], depth uint) Vec3[T] {
+	// If we've exceeded the ray bounce limit, no more light is gathered.
+	if depth == 0 {
+		return Vec3[T]{0.0, 0.0, 0.0}
+	}
+
 	var hitRecord HitRecord[T]
-	if hittable.hit(r, Interval[T]{0.0, T(math.Inf(1))}, &hitRecord) {
-		return Vec3[T]{hitRecord.normal.x + 1, hitRecord.normal.y + 1, hitRecord.normal.z + 1}.Mul(0.5)
+	if hittable.hit(r, Interval[T]{0.0001, T(math.Inf(1))}, &hitRecord) {
+		var scattered Ray[T]
+		var attenuation Vec3[T]
+		if hitRecord.mat.scatter(r, &hitRecord, &attenuation, &scattered) {
+			return attenuation.ElementWiseMul(rt.color(&scattered, hittable, depth-1))
+		}
+		return Vec3[T]{0.0, 0.0, 0.0}
 	}
 
 	unitDirection := r.direction.UnitVector()
@@ -110,13 +123,8 @@ func (rt *RayTracer[T]) getRay(i, j uint) Ray[T] {
 	return r
 }
 
-func (rt *RayTracer[T]) traceImage() [][]Vec3[T] {
+func (rt *RayTracer[T]) traceImage(world HittableList[T]) [][]Vec3[T] {
 	var image [][]Vec3[T]
-
-	var world HittableList[T]
-
-	world.add(Sphere[T]{Vec3[T]{0, 0, -1}, 0.5})
-	world.add(Sphere[T]{Vec3[T]{0, -100.5, -1}, 100})
 
 	for i := uint(0); i < rt.imageHeight; i++ {
 		image = append(image, make([]Vec3[T], rt.imageWidth))
@@ -125,7 +133,7 @@ func (rt *RayTracer[T]) traceImage() [][]Vec3[T] {
 
 			for s := uint(0); s < rt.samplesPerPixel; s++ {
 				r := rt.getRay(i, j)
-				color = color.Add(rt.color(&r, &world))
+				color = color.Add(rt.color(&r, &world, rt.maxDepth))
 			}
 
 			// Divide the color by the number of samples to get the average color
@@ -139,8 +147,23 @@ func (rt *RayTracer[T]) traceImage() [][]Vec3[T] {
 }
 
 func main() {
-	const width, height = 400, 200
-	rt := makeRayTracer[float32](width, height, 100)
-	image := rt.traceImage()
+
+	type T = float32
+
+	materialGround := lambertian[T]{Vec3[T]{0.8, 0.8, 0.0}}
+	materialCenter := lambertian[T]{Vec3[T]{0.1, 0.2, 0.5}}
+	materialLeft := metal[T]{Vec3[T]{0.8, 0.8, 0.8}}
+	materialRight := metal[T]{Vec3[T]{0.8, 0.6, 0.2}}
+
+	var world HittableList[T]
+
+	world.add(Sphere[T]{Vec3[T]{0.0, -100.5, -1.0}, 100.0, &materialGround})
+	world.add(Sphere[T]{Vec3[T]{0.0, 0.0, -1.0}, 0.5, &materialCenter})
+	world.add(Sphere[T]{Vec3[T]{-1.0, 0.0, -1.0}, 0.5, &materialLeft})
+	world.add(Sphere[T]{Vec3[T]{1.0, 0.0, -1.0}, 0.5, &materialRight})
+
+	const width, height = 800, 400
+	rt := makeRayTracer[T](width, height, 100)
+	image := rt.traceImage(world)
 	PpmWriter("test.ppm", image)
 }
