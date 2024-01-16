@@ -27,13 +27,14 @@ func (l *lambertian[T]) scatter(rIn *Ray[T], rec *HitRecord[T], attenuation *Vec
 // Metal
 type metal[T Float] struct {
 	albedo Vec3[T]
+	fuzz   T
 }
 
 func (m *metal[T]) scatter(rIn *Ray[T], rec *HitRecord[T], attenuation *Vec3[T], scattered *Ray[T]) bool {
 	reflected := rIn.direction.UnitVector().Reflect(rec.normal)
-	*scattered = Ray[T]{rec.p, reflected}
+	*scattered = Ray[T]{rec.p, reflected.Add(randomUnitVec3[T]().Mul(m.fuzz))}
 	*attenuation = m.albedo
-	return true
+	return scattered.direction.Dot(rec.normal) > 0
 }
 
 // End Metal

@@ -152,8 +152,8 @@ func main() {
 
 	materialGround := lambertian[T]{Vec3[T]{0.8, 0.8, 0.0}}
 	materialCenter := lambertian[T]{Vec3[T]{0.1, 0.2, 0.5}}
-	materialLeft := metal[T]{Vec3[T]{0.8, 0.8, 0.8}}
-	materialRight := metal[T]{Vec3[T]{0.8, 0.6, 0.2}}
+	materialLeft := metal[T]{Vec3[T]{0.8, 0.8, 0.8}, 0.3}
+	materialRight := metal[T]{Vec3[T]{0.8, 0.6, 0.2}, 1.0}
 
 	var world HittableList[T]
 
