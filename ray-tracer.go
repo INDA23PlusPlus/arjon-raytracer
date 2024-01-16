@@ -36,7 +36,7 @@ type RayTracer[T Float] struct {
 	maxDepth                 uint    // Maximum number of bounces
 }
 
-func makeRayTracer[T Float](imageWidth, imageHeight uint, optSamplesPerPixel ...uint) RayTracer[T] {
+func makeRayTracer[T Float](imageWidth, imageHeight uint, vfov T, optSamplesPerPixel ...uint) RayTracer[T] {
 	if imageWidth <= 0 || imageHeight <= 0 {
 		panic("Image width and height must be positive")
 	}
@@ -48,8 +48,10 @@ func makeRayTracer[T Float](imageWidth, imageHeight uint, optSamplesPerPixel ...
 
 	// Determine the viewport size
 	var focalLength T = 1.0
+	theta := degreesToRadians[T](vfov)
+	h := T(math.Tan(float64(theta / 2.0)))
 	aspectRatio := T(imageWidth) / T(imageHeight)
-	viewPortHeight := T(2.0)
+	viewPortHeight := T(2.0) * h * focalLength
 	viewPortWidth := aspectRatio * viewPortHeight
 
 	// Calculate the vectors for the viewport
@@ -152,7 +154,7 @@ func main() {
 
 	materialGround := lambertian[T]{Vec3[T]{0.8, 0.8, 0.0}}
 	materialCenter := lambertian[T]{Vec3[T]{0.1, 0.2, 0.5}}
-	materialLeft := metal[T]{Vec3[T]{0.8, 0.8, 0.8}, 0.3}
+	materialLeft := dielectric[T]{1.5}
 	materialRight := metal[T]{Vec3[T]{0.8, 0.6, 0.2}, 1.0}
 
 	var world HittableList[T]
@@ -160,10 +162,11 @@ func main() {
 	world.add(Sphere[T]{Vec3[T]{0.0, -100.5, -1.0}, 100.0, &materialGround})
 	world.add(Sphere[T]{Vec3[T]{0.0, 0.0, -1.0}, 0.5, &materialCenter})
 	world.add(Sphere[T]{Vec3[T]{-1.0, 0.0, -1.0}, 0.5, &materialLeft})
+	world.add(Sphere[T]{Vec3[T]{-1.0, 0.0, -1.0}, -0.4, &materialLeft})
 	world.add(Sphere[T]{Vec3[T]{1.0, 0.0, -1.0}, 0.5, &materialRight})
 
 	const width, height = 800, 400
-	rt := makeRayTracer[T](width, height, 100)
+	rt := makeRayTracer[T](width, height, 90.0, 100)
 	image := rt.traceImage(world)
 	PpmWriter("test.ppm", image)
 }

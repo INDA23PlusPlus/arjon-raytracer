@@ -124,3 +124,10 @@ func (v Vec3[T]) Reflect(normal Vec3[T]) Vec3[T] {
 func (v Vec3[T]) ElementWiseMul(v2 Vec3[T]) Vec3[T] {
 	return Vec3[T]{v.x * v2.x, v.y * v2.y, v.z * v2.z}
 }
+
+func (v Vec3[T]) Refract(n Vec3[T], etaiOverEtat T) Vec3[T] {
+	cosTheta := T(math.Min(float64(v.Mul(-1).Dot(n)), 1.0))
+	rOutPerp := v.Add(n.Mul(cosTheta)).Mul(etaiOverEtat)
+	rOutParallel := n.Mul(T(-1.0) * T(math.Sqrt(math.Abs(float64(1.0-rOutPerp.SquaredLength())))))
+	return rOutPerp.Add(rOutParallel)
+}
