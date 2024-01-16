@@ -34,48 +34,45 @@ type RayTracer[T Float] struct {
 	focalLength              T       // Distance from the camera to the viewport
 	samplesPerPixel          uint    // Number of samples per pixel
 	maxDepth                 uint    // Maximum number of bounces
+	vfov                     T       // Vertical field of view in degrees
+
+	lookFrom, lookAt, vUp Vec3[T] // Camera parameters
 }
 
-func makeRayTracer[T Float](imageWidth, imageHeight uint, vfov T, optSamplesPerPixel ...uint) RayTracer[T] {
+func makeRayTracer[T Float](imageWidth, imageHeight uint, vfov T, samplesPerPixel uint, lookFrom, lookAt, vUp Vec3[T]) RayTracer[T] {
 	if imageWidth <= 0 || imageHeight <= 0 {
 		panic("Image width and height must be positive")
 	}
-	if len(optSamplesPerPixel) > 1 {
-		panic("Too many arguments")
-	}
 
-	cameraCenter := Vec3[T]{0, 0, 0}
+	cameraCenter := lookFrom
 
 	// Determine the viewport size
-	var focalLength T = 1.0
+	focalLength := lookFrom.Sub(lookAt).Length()
 	theta := degreesToRadians[T](vfov)
 	h := T(math.Tan(float64(theta / 2.0)))
 	aspectRatio := T(imageWidth) / T(imageHeight)
 	viewPortHeight := T(2.0) * h * focalLength
 	viewPortWidth := aspectRatio * viewPortHeight
 
+	w := lookFrom.Sub(lookAt).UnitVector()
+	u := vUp.Cross(w).UnitVector()
+	v := w.Cross(u)
+
 	// Calculate the vectors for the viewport
-	viewportU, viewportV := Vec3[T]{viewPortWidth, 0, 0}, Vec3[T]{0, -viewPortHeight, 0}
+	viewportU, viewportV := u.Mul(viewPortWidth), v.Mul(-viewPortHeight)
 
 	// Calculate the vectors for the pixels
 	pixelDeltaU, pixelDeltaV := viewportU.Div(T(imageWidth)), viewportV.Div(T(imageHeight))
 
 	// Calculate the location of the pixel at (0, 0)
-	viewportUpperLeftCorner := cameraCenter.Sub(viewportU.Div(2)).Sub(viewportV.Div(2)).Sub(Vec3[T]{0, 0, focalLength})
+	viewportUpperLeftCorner := cameraCenter.Sub(viewportU.Div(2)).Sub(viewportV.Div(2)).Sub(w.Mul(focalLength))
 	pixel00Loc := viewportUpperLeftCorner.Add(pixelDeltaU.Add(pixelDeltaV).Div(2))
-
-	// Set the number of samples per pixel
-	var samplesPerPixel uint
-	if len(optSamplesPerPixel) > 0 {
-		samplesPerPixel = optSamplesPerPixel[0]
-	} else {
-		samplesPerPixel = 10
-	}
 
 	maxDepth := uint(10)
 
-	return RayTracer[T]{aspectRatio, imageWidth, imageHeight, viewPortHeight, viewPortWidth,
-		cameraCenter, pixel00Loc, pixelDeltaU, pixelDeltaV, focalLength, samplesPerPixel, maxDepth}
+	return RayTracer[T]{aspectRatio, imageWidth, imageHeight, viewPortHeight,
+		viewPortWidth, cameraCenter, pixel00Loc, pixelDeltaU, pixelDeltaV,
+		focalLength, samplesPerPixel, maxDepth, vfov, lookFrom, lookAt, vUp}
 }
 
 func (rt *RayTracer[T]) hitSphere(center Vec3[T], radius T, r *Ray[T]) T {
@@ -166,7 +163,7 @@ func main() {
 	world.add(Sphere[T]{Vec3[T]{1.0, 0.0, -1.0}, 0.5, &materialRight})
 
 	const width, height = 800, 400
-	rt := makeRayTracer[T](width, height, 90.0, 100)
+	rt := makeRayTracer[T](width, height, 20.0, 100, Vec3[T]{-2, 2, 1}, Vec3[T]{0, 0, -1}, Vec3[T]{0, 1, 0})
 	image := rt.traceImage(world)
 	PpmWriter("test.ppm", image)
 }
